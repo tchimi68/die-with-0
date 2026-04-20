@@ -140,8 +140,9 @@
         else if (year <= 2060) annualYield = params.yield2045_2060;
         else                   annualYield = params.yield2060_2078;
 
-        const annualRate  = annualYield / 100;
-        const monthlyRate = annualRate / 12;
+        const annualRate    = annualYield / 100;
+        const monthlyRate   = annualRate / 12;
+        const peaMonthlyRate = (params.peaYield ?? 6) / 100 / 12;
 
         const curInf = year <= 2035 ? params.inflationUntil2035 : year <= 2055 ? params.inflation2035to2055 : params.inflation2056to2200;
         if (m > 0) cumulativeInflationMult *= Math.pow(1 + curInf / 100, 1 / 12);
@@ -161,7 +162,7 @@
         }
 
         const accountYieldAmount = accountWealth * monthlyRate;
-        const peaYieldAmount     = peaWealth * monthlyRate;
+        const peaYieldAmount     = peaWealth * peaMonthlyRate;
 
         let taxAmountAccount = 0;
         if (accountWealth > 0 && accountYieldAmount > 0) {
@@ -187,7 +188,8 @@
         for (const item of params.otherIncomes) {
           if ((year > item.startYear || (year === item.startYear && month >= item.startMonth)) &&
               (year < item.endYear   || (year === item.endYear   && month <= item.endMonth))) {
-            const yrs  = year - item.startYear;
+            const monthsElapsed = (year - item.startYear) * 12 + (month - item.startMonth);
+            const yrs  = monthsElapsed / 12;
             const brut = item.initialMonthlyAmount * Math.pow(1 + item.annualGrowthRate / 100, yrs);
             const net  = brut * (1 - (item.taxRate || 0) / 100);
             monthlyOtherNetIncome += net;
@@ -219,7 +221,8 @@
         for (const item of params.otherExpenses) {
           if ((year > item.startYear || (year === item.startYear && month >= item.startMonth)) &&
               (year < item.endYear   || (year === item.endYear   && month <= item.endMonth))) {
-            const yrs = year - item.startYear;
+            const monthsElapsed = (year - item.startYear) * 12 + (month - item.startMonth);
+            const yrs = monthsElapsed / 12;
             const val = item.initialMonthlyAmount * Math.pow(1 + item.annualGrowthRate / 100, yrs);
             monthlyExpenseSum += val;
             customExpenses[item.label] = val;
@@ -243,7 +246,8 @@
             needed -= takenNet;
           }
           if (needed > 0 && cashWealth > 0) { const f = Math.min(cashWealth, needed); cashWealth -= f; needed -= f; }
-          if (needed > 0) accountWealth -= needed;
+          // patrimoine épuisé : on accepte une dette mais bornée à -initialWealth pour éviter la spirale infinie
+          if (needed > 0) accountWealth = Math.max(accountWealth - needed, -Math.abs(params.initialWealth));
         } else {
           let surplus = flow;
           if (cashWealth < params.cashBuffer) {
@@ -265,13 +269,13 @@
           investedWealth: accountWealth+peaWealth, cash: cashWealth,
           yieldAmount: accountYieldAmount+peaYieldAmount,
           taxAmount: taxAmountAccount+taxAmountPEAWithdrawal,
-          netYieldCT: netAccountYield, netYieldPEA: peaYieldAmount-taxAmountPEAWithdrawal,
+          netYieldCT: netAccountYield, netYieldPEA: peaYieldAmount,
           peaWithdrawal: currentPeaWithdrawalGross, taxLossBalance: accumulatedTaxLosses,
           rent:0, loans:loanTotal, education:0, baseExpenses:baseExp,
           customIncomes, customExpenses, donations:{},
           totalIncome: netAccountYield+peaYieldAmount+monthlyOtherNetIncome,
-          totalExpense: monthlyExpenseSum,
-          netCashflow: (netAccountYield+peaYieldAmount+monthlyOtherNetIncome)-monthlyExpenseSum,
+          totalExpense: monthlyExpenseSum+taxAmountPEAWithdrawal,
+          netCashflow: netAccountYield+peaYieldAmount+monthlyOtherNetIncome-monthlyExpenseSum-taxAmountPEAWithdrawal,
           inflationRate: curInf, isNegativeYield: annualYield < 0,
           isRealWealthOverride, realWealthPointId: matchingPointId, explanations
         });
@@ -973,6 +977,8 @@
                       <Input label="PEA"                value={params.initialPEAWealth} onChange={v => updateParam('initialPEAWealth',Number(v))} suffix="€"/>
                       <Input label="Âge actuel"         value={params.currentAge}       onChange={v => updateParam('currentAge',Number(v))}/>
                       <Input label="Cash tampon"        value={params.cashBuffer}       onChange={v => updateParam('cashBuffer',Number(v))}        suffix="€"/>
+                      <Input label="Rend. PEA %"        value={params.peaYield ?? 6}    onChange={v => updateParam('peaYield',Number(v))}          suffix="%"/>
+                      <Input label="Fisc. PEA %"        value={params.taxRatePEA}       onChange={v => updateParam('taxRatePEA',Number(v))}        suffix="%"/>
                       <div className="col-span-2">
                         <Input label="Stock MV initial" value={params.initialTaxLosses} onChange={v => updateParam('initialTaxLosses',Number(v))} suffix="€"/>
                       </div>
