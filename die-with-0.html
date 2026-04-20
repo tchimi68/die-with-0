@@ -572,7 +572,7 @@
         return sortedRecords.slice(Math.max(0,idx-2), idx+1);
       }, [sortedRecords, activeRecordIndex]);
 
-      const activePlacementsIds = useMemo(() => new Set(params.placements.map(p => p.id)), [params.placements]);
+      const activePlacementsIds = useMemo(() => new Set(params.placements.filter(p => !p.archived).map(p => p.id)), [params.placements]);
 
       const addPlacement = () => {
         saveHistory();
@@ -581,14 +581,12 @@
 
       const deletePlacement = id => {
         saveHistory();
-        const nextPl = params.placements.filter(p => p.id!==id);
-        const nextRe = params.distributionRecords.map(r => {
-          const v={...r.values}, mod={...r.modified}; delete v[id]; delete mod[id];
-          return {...r, values:v, modified:mod};
-        });
-        setProfiles(prev => prev.map(p =>
-          p.id===activeProfileId ? {...p, params:{...p.params, placements:nextPl, distributionRecords:nextRe}} : p
-        ));
+        updateParam('placements', params.placements.map(p => p.id===id ? {...p, archived:true} : p));
+      };
+
+      const restorePlacement = id => {
+        saveHistory();
+        updateParam('placements', params.placements.map(p => p.id===id ? {...p, archived:false} : p));
       };
 
       const addDistributionDate = () => {
@@ -654,6 +652,20 @@
                   </h1>
                   <p className="text-[9px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">Optimise ta Life</p>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-slate-800/60 rounded-xl p-1 border border-slate-700 shrink-0">
+                {[
+                  { label:'Sim', href:'https://nasdaq-simulator.pages.dev/sim_desktop' },
+                  { label:'Mobile', href:'https://nasdaq-simulator.pages.dev/sim_mobile' },
+                  { label:'Backtest', href:'https://nasdaq-simulator.pages.dev/backtest_daily' },
+                  { label:'Lille', href:'https://gestion-lille.pages.dev/' },
+                ].map(({label,href}) => (
+                  <a key={label} href={href} target="_blank" rel="noopener noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase text-slate-400 hover:text-white hover:bg-slate-700 transition-all whitespace-nowrap">
+                    {label}
+                  </a>
+                ))}
               </div>
 
               <div className="flex flex-col md:flex-row items-center gap-3 md:gap-4 w-full lg:w-auto">
@@ -916,7 +928,7 @@
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {params.placements.map(p => (
+                      {params.placements.filter(p => !p.archived).map(p => (
                         <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
                           <td className="p-2.5 md:p-3 border-r border-slate-100">
                             <input className="bg-transparent border-none w-full text-[10px] md:text-xs font-bold focus:ring-0 outline-none p-1"
@@ -952,7 +964,7 @@
                         </tr>
                       ))}
                       <tr className="bg-slate-900 text-white font-black text-[10px] md:text-xs">
-                        <td colSpan={3} className="p-3 md:p-4 uppercase tracking-widest text-[9px] md:text-[10px]">Total</td>
+                        <td colSpan={3} className="p-3 md:p-4 uppercase tracking-widest text-[9px] md:text-[10px]">Total actif</td>
                         {displayedRecords.map(r => {
                           const total = Object.entries(r.values)
                             .filter(([pid]) => activePlacementsIds.has(pid))
@@ -961,6 +973,32 @@
                         })}
                         <td></td>
                       </tr>
+                      {params.placements.some(p => p.archived) && (
+                        <>
+                          <tr className="bg-slate-100">
+                            <td colSpan={3 + displayedRecords.length + 1} className="px-4 py-1.5 text-[9px] font-black uppercase text-slate-400 tracking-widest">
+                              Archivés (neutralisés du total)
+                            </td>
+                          </tr>
+                          {params.placements.filter(p => p.archived).map(p => (
+                            <tr key={p.id} className="opacity-50 bg-slate-50">
+                              <td className="p-2.5 md:p-3 border-r border-slate-100 text-[10px] md:text-xs font-bold text-slate-400 line-through">{p.bank}</td>
+                              <td className="p-2.5 md:p-3 border-r border-slate-100 text-[10px] md:text-xs text-slate-400">{p.accountType}</td>
+                              <td className="p-2.5 md:p-3 border-r border-slate-100 text-[10px] md:text-xs text-slate-400 italic">{p.supportType}</td>
+                              {displayedRecords.map(r => (
+                                <td key={r.id} className="p-2.5 md:p-3 text-right border-r border-slate-100 text-[10px] text-slate-400">
+                                  {formatEuro(r.values[p.id] || 0)}
+                                </td>
+                              ))}
+                              <td className="p-2 md:p-3 text-center">
+                                <button onClick={() => restorePlacement(p.id)} title="Restaurer" className="text-indigo-300 hover:text-indigo-600 p-1 transition-colors">
+                                  <Undo2 className="w-4 h-4"/>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </>
+                      )}
                     </tbody>
                   </table>
                 </div>
